@@ -13,6 +13,17 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+export const parseResume = async (file: File): Promise<{ text: string }> => {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/api/parse-resume`, { method: "POST", body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? "Failed to parse PDF");
+  }
+  return res.json();
+};
+
 export const scrapeJob = (url: string) =>
   post("/api/scrape", { url });
 

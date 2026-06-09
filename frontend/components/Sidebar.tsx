@@ -44,13 +44,6 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="mt-auto p-4 hidden md:block">
-        <div className="rounded-xl bg-violet-950/40 border border-violet-800/30 p-3">
-          <p className="text-xs text-violet-300 font-medium">Gemini Free</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">1M tokens/day · $0 cost</p>
-        </div>
-      </div>
     </aside>
   );
 }

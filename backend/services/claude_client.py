@@ -2,72 +2,79 @@ import asyncio
 import json
 import os
 import re
-import google.generativeai as genai
+from groq import AsyncGroq
 
-genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-_model = genai.GenerativeModel("gemini-1.5-flash")
-
-
-async def _ask(prompt: str) -> str:
-    loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(None, _model.generate_content, prompt)
-    return response.text
+client = AsyncGroq(api_key=os.environ["GROQ_API_KEY"])
+MODEL = "llama-3.3-70b-versatile"
 
 
-RESUME_PROMPT = """\
-You are an expert resume coach. Rewrite the resume below to match the job description by:
-1. Reordering bullet points to foreground relevant experience
-2. Adjusting the Professional Summary to mirror the job's exact language
-3. Adding keywords from the JD where they honestly apply to the candidate
-4. NEVER inventing skills or experience not present in the original resume
-5. Keeping all dates, companies, and factual claims exactly as-is
-6. Keeping output length within +-10% of the original
+async def _ask(system: str, user: str) -> str:
+    response = await client.chat.completions.create(
+        model=MODEL,
+        max_tokens=4096,
+        temperature=0.4,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user},
+        ],
+    )
+    return response.choices[0].message.content
 
-Return ONLY the tailored resume as plain text. No commentary, no markdown fences.
-After the resume text, on a new line output exactly:
-CHANGES_JSON: [{{"type":"added","phrase":"..."}}]
-where each entry is a keyword added or phrase reworded.
 
-JOB: {job_title} at {company}
+RESUME_SYSTEM = """You are a senior technical recruiter and resume expert at a top tech company. Your job is to transform a candidate's resume into a highly targeted, ATS-optimized resume for a specific job.
 
-JOB DESCRIPTION:
-{job_description}
+RULES (follow strictly):
+1. NEVER invent skills, experience, projects, or achievements not in the original resume
+2. Keep ALL dates, company names, college names, and GPA exactly as-is
+3. Rewrite every bullet point using strong action verbs (Built, Developed, Designed, Implemented, Optimized, Led, Automated, Reduced, Increased)
+4. Mirror the exact keywords and phrases from the job description naturally into the resume
+5. Reorder sections and bullets to put the most relevant experience FIRST
+6. Rewrite the Professional Summary/Objective to directly address the job title and company
+7. Quantify achievements wherever possible (e.g., "reduced load time by 40%", "built REST API serving 1000+ requests")
+8. Use strong, specific language — remove weak phrases like "helped with", "assisted in", "worked on"
+9. Output length must be within ±15% of original
 
----
+OUTPUT FORMAT:
+- Return ONLY the complete tailored resume as plain text
+- No markdown, no code fences, no commentary
+- After the resume, on a NEW LINE write exactly:
+CHANGES_JSON: [{"type":"added","phrase":"exact keyword or phrase added"}]"""
 
-ORIGINAL RESUME:
-{base_resume}"""
+COVER_LETTER_SYSTEM = """You are an expert career coach who writes cover letters that get interviews. Write a cover letter that is professional, specific, and compelling.
 
-COVER_LETTER_PROMPT = """\
-Write a cover letter for a software engineering student applying for {job_title} at {company}. Maximum 250 words.
-Structure: Hook (1 sentence) -> Why This Role (2-3 sentences) -> What I Bring (3-4 sentences citing specific projects) -> Closing (1 sentence).
-No filler phrases like "I am excited to apply." Sound confident. Use first person.
+STRICT RULES:
+- Maximum 220 words
+- NEVER use: "I am excited to apply", "I am writing to express my interest", "To whom it may concern", "I believe I would be a great fit"
+- DO NOT start with "I" — start with a strong hook about the company or role
+- Be specific: mention the company name, role title, and 1-2 specific skills from the JD
+- Reference actual projects/skills from the resume — be concrete, not vague
+- Sound like a confident professional, not a desperate student
+- End with a clear, short call to action
 
-Resume:
-{resume}
+STRUCTURE:
+Para 1 (2-3 sentences): Hook — what draws you to THIS company + role specifically, show you know what they do
+Para 2 (3-4 sentences): What you bring — cite 2 specific projects or skills from resume that directly match the JD
+Para 3 (1-2 sentences): Brief, confident closing with call to action
 
-Key requirements:
-{jd_snippet}"""
+Return ONLY the cover letter text. No subject line, no "Dear Hiring Manager", just the body paragraphs."""
 
-QA_PROMPT = """\
-Answer the following job application screening questions honestly based on the candidate's resume.
-- Be concise (1-3 sentences per answer), sound human, use first person
-- For "notice period" or "availability" -> answer "Immediately available" (student)
-- For "years of experience" -> count from first relevant project or internship
-- For "expected salary" -> "As per company standards"
-- Never fabricate experience
+QA_SYSTEM = """You are helping a CS student fill out job application screening questions. Answer honestly and professionally based only on their resume.
 
-Resume:
-{resume}
+RULES:
+- 1-2 sentences max per answer — short and direct
+- Sound like a real person, not a robot
+- Use first person
+- For "notice period" / "when can you start" / "availability" → "I am immediately available"
+- For "years of experience" → count months/years from the first relevant project or internship listed
+- For "expected salary" / "CTC" / "package" → "I am flexible and open to discussion based on the role"
+- For "why this company" → give a specific, honest 1-2 sentence answer based on the company name
+- For "relocate" → "Yes, I am open to relocation"
+- NEVER fabricate certifications, awards, or experience
 
-Job: {job_title} at {company}
-
-Questions:
-{questions}
-
-Answer each question numbered exactly like:
+Answer ONLY in this format (no extra text):
 1. [answer]
-2. [answer]"""
+2. [answer]
+3. [answer]"""
 
 
 async def generate_resume_and_cover_letter(
@@ -76,23 +83,23 @@ async def generate_resume_and_cover_letter(
     job_title: str,
     company: str,
 ) -> dict:
-    resume_prompt = RESUME_PROMPT.format(
-        job_title=job_title,
-        company=company,
-        job_description=job_description,
-        base_resume=base_resume,
+    resume_user = (
+        f"TARGET JOB: {job_title} at {company}\n\n"
+        f"JOB DESCRIPTION:\n{job_description}\n\n"
+        f"{'='*60}\n\n"
+        f"CANDIDATE'S ORIGINAL RESUME:\n{base_resume}"
     )
-    cover_prompt = COVER_LETTER_PROMPT.format(
-        job_title=job_title,
-        company=company,
-        resume=base_resume,
-        jd_snippet=job_description[:600],
+    cover_user = (
+        f"Candidate Resume:\n{base_resume}\n\n"
+        f"{'='*60}\n\n"
+        f"Job Title: {job_title}\n"
+        f"Company: {company}\n\n"
+        f"Key Job Requirements:\n{job_description[:800]}"
     )
 
-    # Run both concurrently to save time
     raw_resume, cover_letter = await asyncio.gather(
-        _ask(resume_prompt),
-        _ask(cover_prompt),
+        _ask(RESUME_SYSTEM, resume_user),
+        _ask(COVER_LETTER_SYSTEM, cover_user),
     )
 
     changes = []
@@ -123,13 +130,12 @@ async def answer_screening_questions(
     questions: list[str],
 ) -> list[dict]:
     questions_text = "\n".join(f"{i+1}. {q}" for i, q in enumerate(questions))
-    prompt = QA_PROMPT.format(
-        resume=tailored_resume,
-        job_title=job_title,
-        company=company,
-        questions=questions_text,
+    user = (
+        f"Candidate Resume:\n{tailored_resume}\n\n"
+        f"Applying for: {job_title} at {company}\n\n"
+        f"Screening Questions:\n{questions_text}"
     )
-    raw = await _ask(prompt)
+    raw = await _ask(QA_SYSTEM, user)
     answers = []
     lines = re.split(r'\n(?=\d+\.)', raw.strip())
     for i, line in enumerate(lines):
