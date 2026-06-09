@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0d0d16;
+  --surface: #13131f;
+  --surface2: #1a1a2e;
+  --border: rgba(255,255,255,0.07);
+  --accent: #7c3aed;
+  --accent2: #2563eb;
+  --green: #10b981;
+  --text: #e2e8f0;
+  --muted: #64748b;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface2);
+  --color-accent: var(--accent);
+  --color-green: var(--green);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2d2d4e; border-radius: 3px; }
+
+/* glow button */
+.btn-glow {
+  background: linear-gradient(135deg, #7c3aed, #2563eb);
+  box-shadow: 0 0 20px rgba(124, 58, 237, 0.35);
+  transition: box-shadow 0.2s, transform 0.1s;
+}
+.btn-glow:hover {
+  box-shadow: 0 0 32px rgba(124, 58, 237, 0.6);
+  transform: translateY(-1px);
+}
+.btn-glow:active { transform: translateY(0); }
+
+/* card */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+/* diff highlight */
+.diff-add {
+  background: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+/* step glow dot */
+.step-active { box-shadow: 0 0 12px rgba(124,58,237,0.8); }
+
+/* textarea */
+textarea, input[type="text"], input[type="url"], input[type="email"], input[type="tel"] {
+  background: var(--surface2) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+textarea:focus, input:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(124,58,237,0.15);
+}
+
+/* tab underline */
+.tab-active {
+  border-bottom: 2px solid var(--accent);
+  color: white;
+}
+
+/* fade in */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.35s ease forwards; }
+
+/* pulse ring for loading */
+@keyframes pulseRing {
+  0%   { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2);   opacity: 0; }
+}
+.pulse-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulseRing 1.2s ease-out infinite;
+}
