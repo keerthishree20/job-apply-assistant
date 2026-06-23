@@ -1,85 +1,174 @@
-# Job Apply Assistant
+<p align="center">
+  <h1 align="center">💼 Job Apply Assistant</h1>
+  <p align="center">AI-powered job application automation — tailors your resume, writes cover letters, answers screening questions, and auto-applies via browser bots.</p>
+</p>
 
-An AI-powered tool that automates the entire job application process — from reading the job description to submitting the application.
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" />
+  <img src="https://img.shields.io/badge/Groq_Llama_3.3-FF6B35?style=for-the-badge&logo=meta&logoColor=white" />
+  <img src="https://img.shields.io/badge/Playwright-2EAD33?style=for-the-badge&logo=playwright&logoColor=white" />
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" />
+</p>
 
-## What it does
+---
 
-1. **Paste a job URL** (LinkedIn, Naukri, Indeed, Internshala, or any company portal)
-2. **AI reads the JD** and tailors your resume to match it with keyword highlights
-3. **AI writes a cover letter** (250 words, no fluff)
-4. **AI answers screening questions** based on your resume
-5. **Bot auto-applies** — fills the form, uploads your resume, submits
-6. **Excel tracker** logs every application automatically
+## ✨ Features
 
-## Tech Stack
+| Feature | Description |
+|---------|-------------|
+| 📄 **Resume Tailoring** | AI rewrites your resume with ATS-optimized keywords matching the job description |
+| ✉️ **Cover Letter Generation** | Generates concise, no-fluff cover letters (220 words max) |
+| ❓ **Screening Q&A** | Auto-answers common screening questions (notice period, salary, experience) |
+| 🔍 **Job Scraping** | Scrapes job descriptions from 10+ portals with site-specific selectors |
+| 🤖 **LinkedIn Easy Apply Bot** | Playwright bot handles multi-page LinkedIn application forms |
+| 🏢 **ATS Portal Bot** | Auto-fills Workday, Greenhouse, Lever, SmartRecruiters, iCIMS, Taleo |
+| 📸 **Screenshot Preview** | See a preview of the filled form before confirming submission |
+| 📊 **Application Tracker** | Kanban board + downloadable Excel tracker for all applications |
+| 🔄 **Resume Diff View** | Side-by-side comparison with green highlights showing AI changes |
+| 📥 **PDF Export** | Download tailored resume and cover letter as PDF |
 
-| Layer | Tech |
-|-------|------|
-| Backend | Python · FastAPI · Playwright |
-| AI | Google Gemini 1.5 Flash (free) |
-| Frontend | Next.js 14 · TypeScript · Tailwind CSS |
-| Automation | Playwright (LinkedIn Easy Apply + ATS portals) |
-| Tracking | openpyxl Excel file |
+---
 
-## Supported Job Portals
+## 🛠️ Tech Stack
 
-- **Job Boards**: LinkedIn, Naukri, Indeed, Internshala
-- **ATS Portals**: Workday, Greenhouse, Lever, SmartRecruiters, iCIMS, Taleo
-- **Any company website** — fallback heuristic scraping
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | Next.js 16, React 19, TypeScript, Tailwind CSS v4 |
+| **Backend** | Python, FastAPI, Uvicorn |
+| **AI Model** | Groq API — Llama 3.3 70B Versatile (free tier) |
+| **Browser Automation** | Playwright (Chromium) |
+| **PDF Parsing** | pypdf |
+| **Job Scraping** | httpx + BeautifulSoup4 |
+| **Tracking** | openpyxl (Excel) + localStorage (Kanban) |
 
-## Setup
+---
 
-### 1. Get a free Gemini API key
-Go to [aistudio.google.com](https://aistudio.google.com) → Sign in → Get API key → Copy it.
+## 🚀 Getting Started
 
-### 2. Backend
+### Prerequisites
+
+- Python 3.9+
+- Node.js 18+
+- Free Groq API key from [console.groq.com](https://console.groq.com)
+
+### Backend Setup
+
 ```bash
 cd backend
 pip install -r requirements.txt
 playwright install chromium
 cp .env.example .env
-# Add your GOOGLE_API_KEY in .env
+# Add your GROQ_API_KEY in .env
 python main.py
+# Runs on http://localhost:8000
 ```
 
-### 3. Frontend
+### Frontend Setup
+
 ```bash
 cd frontend
 npm install
 npm run dev
+# Runs on http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+---
 
-## How to Use
+## 🔑 Environment Variables
 
-1. Go to **Profile** tab → fill your name, email, phone, LinkedIn, GitHub once
-2. Paste your base resume in the text area (saved automatically)
-3. Paste a job URL → click **Generate**
-4. Review the tailored resume with green diff highlights
-5. Click **Easy Apply** → bot opens browser, fills form, shows preview
-6. Click **Confirm** → application submitted + logged to Excel
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GROQ_API_KEY` | Yes | Free from [console.groq.com](https://console.groq.com) |
+| `ALLOWED_ORIGINS` | No | CORS origins (defaults to localhost) |
+| `PORT` | No | Backend port (defaults to 8000) |
+| `NEXT_PUBLIC_API_URL` | No | Backend URL (defaults to http://localhost:8000) |
 
-## Cost
+---
 
-**100% free** — Gemini 1.5 Flash gives 1 million tokens/day free. That's ~300+ job applications per day at zero cost.
+## 📋 How It Works
 
-## Project Structure
+```
+1. Profile Setup  →  Fill name, email, phone, LinkedIn, GitHub (saved locally)
+2. Upload Resume  →  Drag & drop your PDF resume
+3. Paste Job URL  →  LinkedIn, Naukri, Indeed, Internshala, or any company portal
+4. AI Generate    →  Tailored resume + cover letter + screening answers (~10 sec)
+5. Review         →  Check diff view, download PDFs if needed
+6. Easy Apply     →  Bot opens browser, fills the actual application form
+7. Preview        →  Screenshot of filled form for your approval
+8. Confirm        →  Submit & auto-log to Excel tracker + Kanban board
+```
+
+---
+
+## 🌐 Supported Job Portals
+
+**Job Boards:** LinkedIn, Naukri, Indeed, Internshala
+
+**ATS Portals:** Workday, Greenhouse, Lever, SmartRecruiters, iCIMS, Taleo
+
+**Any other URL:** Fallback heuristic scraping extracts the job description automatically.
+
+---
+
+## 📁 Project Structure
 
 ```
 job-apply-assistant/
-  backend/
-    main.py              # FastAPI entry point
-    requirements.txt
-    routers/             # scrape, generate, answers, apply, tracker
-    services/            # Gemini AI client, Playwright bots, Excel tracker
-    schemas/             # Pydantic models
-    utils/               # HTML text cleaner
-  frontend/
-    app/                 # Next.js pages
-    components/          # UI components
-    lib/                 # API helpers, localStorage, types
+├── backend/
+│   ├── main.py              # FastAPI entry point
+│   ├── routers/             # API route handlers
+│   │   ├── scrape.py        # Job description scraping
+│   │   ├── generate.py      # AI resume + cover letter
+│   │   ├── answers.py       # AI screening answers
+│   │   ├── apply.py         # Browser bot apply + confirm
+│   │   ├── tracker.py       # Excel export
+│   │   └── resume.py        # PDF parsing
+│   ├── services/
+│   │   ├── claude_client.py # AI client (Groq Llama 3.3)
+│   │   ├── scraper.py       # Per-site job scraping
+│   │   ├── linkedin_bot.py  # LinkedIn Easy Apply bot
+│   │   ├── ats_bot.py       # ATS portal bot
+│   │   └── excel_tracker.py # Application logging
+│   └── schemas/
+│       └── models.py        # Pydantic models
+├── frontend/
+│   ├── app/
+│   │   ├── page.tsx         # Main apply flow (step wizard)
+│   │   ├── profile/         # Profile setup
+│   │   └── tracker/         # Kanban board
+│   ├── components/          # UI components
+│   └── lib/                 # API client + types
+└── README.md
 ```
 
-## GitHub
-[github.com/keerthishree20/job-apply-assistant](https://github.com/keerthishree20/job-apply-assistant)
+---
+
+## 📡 API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check |
+| POST | `/api/parse-resume` | Extract text from PDF |
+| POST | `/api/scrape` | Scrape job description from URL |
+| POST | `/api/generate` | AI-tailor resume + cover letter |
+| POST | `/api/answers` | AI-answer screening questions |
+| POST | `/api/apply` | Bot fills form, returns screenshot |
+| POST | `/api/apply/confirm` | Confirm & submit application |
+| GET | `/api/tracker/export` | Download Excel tracker |
+
+---
+
+## 📝 Notes
+
+- Bot runs in **visible mode** (non-headless) so you can watch the automation
+- LinkedIn login requires manual sign-in on first use — session is saved for reuse
+- Groq API free tier is sufficient for personal use
+- All applications are logged to `jobs_applied.xlsx` on the server
+
+---
+
+<p align="center">
+  Built with ❤️ by <a href="https://github.com/keerthishree20">KeerthiShree TS</a>
+</p>
