@@ -1,7 +1,7 @@
 import asyncio
 from fastapi import APIRouter
 from schemas.models import GenerateRequest, GenerateResponse
-from services.claude_client import generate_resume_and_cover_letter
+from services.llm_client import generate_resume_and_cover_letter
 
 router = APIRouter()
 

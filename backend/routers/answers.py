@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from schemas.models import AnswersRequest, AnswersResponse, QAItem
-from services.claude_client import answer_screening_questions
+from services.llm_client import answer_screening_questions
 
 router = APIRouter()
 
