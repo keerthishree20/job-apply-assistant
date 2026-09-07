@@ -1,13 +1,30 @@
 import os
-from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from pathlib import Path
 
-load_dotenv()
+from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+BACKEND_DIR = Path(__file__).resolve().parent
+
+# Anchored to this file rather than the working directory, so the .env is found
+# no matter where uvicorn is launched from.
+load_dotenv(BACKEND_DIR / ".env")
 
 from routers import health, scrape, generate, answers, apply, tracker, resume
+from services.llm_client import LLMUnavailable
 
 app = FastAPI(title="Job Apply Assistant API", version="1.0.0")
+
+
+@app.exception_handler(LLMUnavailable)
+async def _llm_unavailable(request: Request, exc: LLMUnavailable) -> JSONResponse:
+    """A missing key or a retired model is a configuration problem, not a crash.
+
+    503 with the message, rather than a 500 and a traceback the user can't act on.
+    """
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 

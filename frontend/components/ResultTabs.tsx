@@ -82,10 +82,28 @@ export default function ResultTabs({ result, originalResume, qaItems, onResumeCh
           {qaItems.length === 0 && (
             <p className="text-sm text-slate-500">No screening questions for this job.</p>
           )}
+          {qaItems.some((qa) => qa.needs_review) && (
+            <div className="card p-4 border border-amber-500/40 bg-amber-500/5">
+              <p className="text-sm text-amber-300 leading-6">
+                Some questions below ask about your legal or personal status. Those
+                are left blank on purpose — answer them yourself before applying.
+              </p>
+            </div>
+          )}
           {qaItems.map((qa, i) => (
-            <div key={i} className="card p-4">
+            <div
+              key={i}
+              className={`card p-4 ${qa.needs_review ? "border border-amber-500/40" : ""}`}
+            >
               <p className="text-xs text-violet-400 font-medium mb-1">Q: {qa.question}</p>
-              <p className="text-sm text-slate-300 leading-6">{qa.answer}</p>
+              {qa.needs_review ? (
+                <p className="text-sm text-amber-300/90 leading-6">
+                  <span className="font-medium">You must answer this one. </span>
+                  {qa.answer}
+                </p>
+              ) : (
+                <p className="text-sm text-slate-300 leading-6">{qa.answer}</p>
+              )}
             </div>
           ))}
         </div>

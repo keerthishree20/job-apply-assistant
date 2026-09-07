@@ -19,6 +19,9 @@ export interface DiffChange {
 export interface QAItem {
   question: string;
   answer: string;
+  /** Set by the backend for legal / personal-status questions the candidate
+   *  must answer themselves — a guessed answer would misrepresent them. */
+  needs_review?: boolean;
 }
 
 export interface GenerateResult {

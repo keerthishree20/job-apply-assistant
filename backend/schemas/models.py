@@ -43,6 +43,9 @@ class GenerateResponse(BaseModel):
 class QAItem(BaseModel):
     question: str
     answer: str
+    # True when the candidate must answer personally -- legal status, protected
+    # characteristics, anything a guess would misrepresent. See llm_client.
+    needs_review: bool = False
 
 
 class AnswersRequest(BaseModel):

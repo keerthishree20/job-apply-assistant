@@ -32,3 +32,8 @@ Thumbs.db
 # Playwright
 backend/sessions/*.json
 backend/sessions/resume_upload.pdf
+
+# Local env overrides
+.env.local
+*.tsbuildinfo
+.pytest_cache/

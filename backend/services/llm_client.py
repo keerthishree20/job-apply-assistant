@@ -2,22 +2,58 @@ import asyncio
 import json
 import os
 import re
-from groq import AsyncGroq
+from groq import AsyncGroq, APIStatusError, NotFoundError
 
-client = AsyncGroq(api_key=os.environ["GROQ_API_KEY"])
-MODEL = "llama-3.3-70b-versatile"
+# Groq retires models on a rolling basis -- llama-3.3-70b-versatile was the
+# original choice here and has since been decommissioned, which surfaced as a
+# 404 on every generate call. Keep it overridable so the next retirement is an
+# .env change rather than a code change.
+MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+
+
+class LLMUnavailable(RuntimeError):
+    """Raised when the model cannot be reached, with a message worth showing."""
+
+
+# Built lazily so importing this module doesn't require the key to be set --
+# `main.py` calls load_dotenv() before importing routers, but that ordering
+# shouldn't be load-bearing.
+_client: AsyncGroq | None = None
+
+
+def _get_client() -> AsyncGroq:
+    global _client
+    if _client is None:
+        key = os.getenv("GROQ_API_KEY")
+        if not key:
+            raise LLMUnavailable(
+                "No GROQ_API_KEY set. Copy backend/.env.example to backend/.env "
+                "and add a key from https://console.groq.com/keys"
+            )
+        _client = AsyncGroq(api_key=key)
+    return _client
 
 
 async def _ask(system: str, user: str) -> str:
-    response = await client.chat.completions.create(
-        model=MODEL,
-        max_tokens=4096,
-        temperature=0.4,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
-    )
+    try:
+        response = await _get_client().chat.completions.create(
+            model=MODEL,
+            max_tokens=4096,
+            temperature=0.4,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user",   "content": user},
+            ],
+        )
+    except NotFoundError as exc:
+        raise LLMUnavailable(
+            f"Groq has no model named {MODEL!r} on this account -- it was most "
+            f"likely retired. Set GROQ_MODEL in backend/.env to a current one; "
+            f"https://console.groq.com/docs/models lists what is available."
+        ) from exc
+    except APIStatusError as exc:
+        raise LLMUnavailable(f"Groq returned {exc.status_code}: {exc.message}") from exc
+
     return response.choices[0].message.content
 
 
@@ -70,6 +106,12 @@ RULES:
 - For "why this company" → give a specific, honest 1-2 sentence answer based on the company name
 - For "relocate" → "Yes, I am open to relocation"
 - NEVER fabricate certifications, awards, or experience
+- NEVER assert a legal or protected-characteristic fact that is not stated in
+  the resume — work authorisation, visa or sponsorship status, citizenship,
+  age, disability, veteran status, criminal record, security clearance,
+  driving licence. Getting one of these wrong is a misrepresentation on a job
+  application, not a rough draft. For any such question answer exactly:
+  NEEDS_CANDIDATE_INPUT
 
 Answer ONLY in this format (no extra text):
 1. [answer]
@@ -123,6 +165,52 @@ async def generate_resume_and_cover_letter(
     }
 
 
+# Questions whose answer is a legal fact about the candidate. A wrong answer
+# here is a misrepresentation on a job application, so these are never left to
+# the model -- the prompt asks it to defer, and this catches the cases where it
+# doesn't. Matched against the question, not the answer.
+#
+# Matched as a flat keyword list rather than as phrases, because word order
+# varies more than it looks: "work authorisation", "authorised to work" and
+# "right to work" are the same question. Over-flagging costs the candidate a
+# few seconds; under-flagging puts a false legal claim on an application, so
+# this errs deliberately toward flagging.
+ELIGIBILITY_PATTERN = re.compile(
+    r"\b("
+    # work eligibility and immigration status
+    r"authoris\w*|authoriz\w*|sponsorship|sponsor|visa|citizen\w*|nationality"
+    r"|passport|immigration|residen\w*|permanent\s+resident|green\s+card"
+    r"|right\s+to\s+work|eligible\s+to\s+work|legally\s+\w+\s+to\s+work"
+    r"|work\s+permit"
+    # protected characteristics
+    r"|disab\w*|veteran|gender|ethnic\w*|\brace\b|religion|marital|pregnan\w*"
+    r"|sexual\s+orientation|date\s+of\s+birth|how\s+old\s+are|\bage\b"
+    # background and clearance
+    r"|criminal|conviction|convicted|felony|background\s+check"
+    r"|security\s+clearance|drug\s+test"
+    # licences
+    r"|driv\w*\s+licen[cs]e|licen[cs]e\s+to\s+driv\w*"
+    r")\b",
+    re.IGNORECASE,
+)
+
+NEEDS_INPUT = "NEEDS_CANDIDATE_INPUT"
+NEEDS_INPUT_TEXT = (
+    "You need to answer this one yourself — it is a legal or personal-status "
+    "question, and a guessed answer would be a misrepresentation."
+)
+
+
+def _finalise(question: str, answer: str) -> dict:
+    """Flag anything the candidate must answer personally."""
+    needs_review = bool(ELIGIBILITY_PATTERN.search(question)) or NEEDS_INPUT in answer
+    return {
+        "question": question,
+        "answer": NEEDS_INPUT_TEXT if needs_review else answer,
+        "needs_review": needs_review,
+    }
+
+
 async def answer_screening_questions(
     tailored_resume: str,
     job_title: str,
@@ -141,7 +229,11 @@ async def answer_screening_questions(
     for i, line in enumerate(lines):
         answer_text = re.sub(r'^\d+\.\s*', '', line).strip()
         if i < len(questions):
-            answers.append({"question": questions[i], "answer": answer_text})
+            answers.append(_finalise(questions[i], answer_text))
     if len(answers) != len(questions):
-        answers = [{"question": q, "answer": raw} for q in questions]
+        # The numbered format didn't parse. Hand back the raw reply rather than
+        # mis-pairing answers to questions, and flag every one for review.
+        answers = [
+            {"question": q, "answer": raw, "needs_review": True} for q in questions
+        ]
     return answers
