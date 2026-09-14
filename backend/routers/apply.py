@@ -137,8 +137,8 @@ async def apply_confirm(req: ApplyConfirmRequest):
         if status == "submitted":
             meta = sess.bot.meta
             append_application(
-                company=sess.company,
-                role=sess.role,
+                company=sess.company or meta.get("company", ""),
+                role=sess.role or meta.get("role", ""),
                 url=meta.get("url", ""),
                 cover_letter=meta.get("cover_letter", False),
                 resume_snippet=sess.resume_snippet,

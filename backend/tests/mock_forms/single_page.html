@@ -49,6 +49,21 @@
   <label for="salary">What are your salary expectations?</label>
   <input id="salary" name="salary">
 
+  <label for="notice">What is your notice period?</label>
+  <select id="notice" name="notice">
+    <option value="">Select...</option>
+    <option value="now">
+      Immediately
+    </option>
+    <option value="30">30 days</option>
+  </select>
+
+  <fieldset>
+    <legend>Can you work from the Bengaluru office?</legend>
+    <label><input type="radio" name="office" value="y"> Yes</label>
+    <label><input type="radio" name="office" value="n"> No</label>
+  </fieldset>
+
   <label for="auth">Are you legally authorized to work in India? *</label>
   <select id="auth" name="auth" required>
     <option value="">Select...</option>

@@ -48,6 +48,8 @@ BSc Computer Science, Riverbank University, 2024
 ANSWERS = [
     {"question": "Why do you want to work here?", "answer": "Acme's API platform matches my FastAPI work.", "needs_review": False},
     {"question": "What is your expected salary?", "answer": "Open to discussion.", "needs_review": False},
+    {"question": "What is your notice period?", "answer": "Immediately", "needs_review": False},
+    {"question": "Can you work from the Bengaluru office?", "answer": "Yes", "needs_review": False},
     # Already flagged by the answers endpoint; must never reach the form.
     {"question": "Are you authorized to work in India?", "answer": "Yes", "needs_review": True},
 ]
@@ -196,6 +198,7 @@ def test_preview_reports_exactly_what_was_filled_and_what_was_left(api, mock_sit
     assert set(prev["fields_filled"]) == {
         "First Name", "Last Name", "Email", "Phone", "LinkedIn Profile", "Resume (PDF)",
         "Cover Letter", "Why do you want to work at Acme?", "What are your salary expectations?",
+        "What is your notice period?", "Can you work from the Bengaluru office?",
     }
     assert set(prev["needs_input"]) == {
         "City", "Years of experience", "Are you legally authorized to work in India?",
@@ -206,13 +209,17 @@ def test_preview_reports_exactly_what_was_filled_and_what_was_left(api, mock_sit
         return await page.evaluate("""() => ({
             first: first_name.value, why: why.value, city: city.value, years: years.value,
             auth: auth.value, sponsor: !!document.querySelector('input[name=sponsor]:checked'),
-            consent: consent.checked, resume: resume.files[0] && resume.files[0].name,
+            consent: consent.checked, notice: notice.value,
+            office: (document.querySelector('input[name=office]:checked') || {}).value,
+            resume: resume.files[0] && resume.files[0].name,
             submissions: window.__submissions,
         })""")
 
     state = _on_page(api, prev["session_id"], form_state)
     assert state["first"] == "Anita"
     assert state["why"] == ANSWERS[0]["answer"]
+    # The option's markup has whitespace around "Immediately"; it must still be chosen.
+    assert (state["notice"], state["office"]) == ("now", "y")
     assert (state["city"], state["years"], state["auth"]) == ("", "", "")
     assert not state["sponsor"] and not state["consent"]
     assert state["resume"].endswith(".pdf")

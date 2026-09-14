@@ -91,6 +91,17 @@ class LinkedInBot:
         await page.goto(job_url, wait_until="domcontentloaded", timeout=20000)
         await _delay(2, 3)
 
+        # /api/scrape is usually blocked by LinkedIn, so read the title and company
+        # here for the tracker.
+        for key, sel in (
+            ("role", "h1.top-card-layout__title, h1.job-details-jobs-unified-top-card__job-title"),
+            ("company", "a.topcard__org-name-link, .job-details-jobs-unified-top-card__company-name"),
+        ):
+            try:
+                self._meta[key] = (await page.locator(sel).first.text_content(timeout=3000) or "").strip()
+            except Exception:
+                pass
+
         for sel in ("button.jobs-apply-button", "button:has-text('Easy Apply')"):
             if await _safe_click(page, sel, timeout=5000):
                 break

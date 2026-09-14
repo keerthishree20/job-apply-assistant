@@ -138,7 +138,7 @@ npm run dev                               # http://localhost:3000
 | `ALLOWED_ORIGINS` | `backend/.env` | `http://localhost:3000` | Comma-separated |
 | `PORT` | `backend/.env` | `8000` | |
 | `APPLY_HEADLESS` | `backend/.env` | `false` | Keep `false` locally: you answer flagged questions in the bot's window |
-| `APPLY_SESSION_TTL` | `backend/.env` | `900` | Seconds a previewed form stays open before its browser is closed |
+| `APPLY_SESSION_TTL` | `backend/.env` | `900` | Age in seconds after which an unconfirmed preview's browser is closed. Checked on the next apply or confirm call, not on a timer |
 | `APPLY_CONFIRM_TIMEOUT` | `backend/.env` | `15` | Seconds to wait for a confirmation or error after submit |
 | `NEXT_PUBLIC_API_URL` | `frontend/.env.local` | `http://localhost:8000` | |
 

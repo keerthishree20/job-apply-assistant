@@ -1,8 +1,8 @@
 """Offline tests for the API surface and the screening-answer safety guard.
 
 Groq is stubbed throughout, so the suite runs with no key, no network and no
-cost. What it does NOT cover is the Playwright bots in services/ -- those drive
-real job sites and submit real applications, so they are never exercised here.
+cost. The Playwright apply flow is covered separately, against local mock
+forms, in test_apply_flow.py.
 """
 
 import io
