@@ -73,15 +73,25 @@ class UserProfile(BaseModel):
 
 class ApplyRequest(BaseModel):
     job_url: str
-    resume_pdf_base64: str
+    # Send the tailored resume text and the backend renders a real PDF from it, or
+    # send an existing PDF as base64. At least one is required.
+    resume_text: Optional[str] = ""
+    resume_pdf_base64: Optional[str] = ""
+    cover_letter: Optional[str] = ""
     profile: UserProfile
     screening_answers: Optional[list[QAItem]] = []
+    company: Optional[str] = ""
+    role: Optional[str] = ""
 
 
 class ApplyPreviewResponse(BaseModel):
     status: str
     screenshot_base64: str
     fields_filled: list[str]
+    # Left blank on purpose: legal or personal-status questions, required fields
+    # with no data, and answers that did not match an option. The candidate fills
+    # these in the browser window before confirming.
+    needs_input: list[str] = []
     session_id: str
 
 
@@ -90,5 +100,9 @@ class ApplyConfirmRequest(BaseModel):
 
 
 class ApplyConfirmResponse(BaseModel):
+    # "submitted": the page confirmed it, and it was logged to the tracker.
+    # "failed": the page showed errors; the session stays open to fix and retry.
+    # "unconfirmed": no confirmation or error appeared; not logged, check the site.
     status: str
     message: str
+    session_open: bool = False

@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -15,7 +16,15 @@ load_dotenv(BACKEND_DIR / ".env")
 from routers import health, scrape, generate, answers, apply, tracker, resume
 from services.llm_client import LLMUnavailable
 
-app = FastAPI(title="Job Apply Assistant API", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    # Open apply sessions each hold a Chromium process; don't leak them on shutdown.
+    await apply.close_all_sessions()
+
+
+app = FastAPI(title="Job Apply Assistant API", version="1.0.0", lifespan=lifespan)
 
 
 @app.exception_handler(LLMUnavailable)

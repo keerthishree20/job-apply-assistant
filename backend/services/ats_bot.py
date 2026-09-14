@@ -1,93 +1,70 @@
-import asyncio
-import base64
 import json
-import random
 from pathlib import Path
+
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
+
+from services.form_filler import (
+    FINAL_BUTTON, FillReport, ResumeFile, click_submit, fill_page, headless,
+)
 
 SESSION_DIR = Path("sessions")
 SESSION_DIR.mkdir(exist_ok=True)
 
+# Only navigation lives here. Fields are found by their labels in form_filler, so
+# the same logic covers every ATS and a renamed input id cannot mis-fill a field.
 ATS_APPLY_CONFIGS = {
     "myworkdayjobs.com": {
         "apply_btn": "a[data-automation-id='applyButton']",
-        "first_name": "input[data-automation-id='legalNameSection_firstName']",
-        "last_name": "input[data-automation-id='legalNameSection_lastName']",
-        "email": "input[data-automation-id='email']",
-        "phone": "input[data-automation-id='phone']",
-        "resume_upload": "input[type='file']",
+        # Workday uses this one button for both "Next" and "Submit".
         "next_btn": "button[data-automation-id='bottom-navigation-next-btn']",
         "submit_btn": "button[data-automation-id='bottom-navigation-next-btn']",
     },
     "boards.greenhouse.io": {
         "apply_btn": "a#apply_button",
-        "first_name": "input#first_name",
-        "last_name": "input#last_name",
-        "email": "input#email",
-        "phone": "input#phone",
-        "resume_upload": "input[type='file']",
         "next_btn": None,
-        "submit_btn": "input[type='submit']",
+        "submit_btn": "input[type='submit'], button[type='submit']",
     },
     "greenhouse.io": {
         "apply_btn": "a#apply_button",
-        "first_name": "input#first_name",
-        "last_name": "input#last_name",
-        "email": "input#email",
-        "phone": "input#phone",
-        "resume_upload": "input[type='file']",
         "next_btn": None,
-        "submit_btn": "input[type='submit']",
+        "submit_btn": "input[type='submit'], button[type='submit']",
     },
     "jobs.lever.co": {
         "apply_btn": "a.template-btn-submit",
-        "first_name": "input[name='name']",
-        "last_name": None,
-        "email": "input[name='email']",
-        "phone": "input[name='phone']",
-        "resume_upload": "input[type='file']",
         "next_btn": None,
         "submit_btn": "button[type='submit']",
     },
     "smartrecruiters.com": {
         "apply_btn": "a.apply-button",
-        "first_name": "input[id='firstName']",
-        "last_name": "input[id='lastName']",
-        "email": "input[id='email']",
-        "phone": "input[id='phoneNumber']",
-        "resume_upload": "input[type='file']",
         "next_btn": "button.navigation-btn-next",
         "submit_btn": "button[data-test='submit-button']",
     },
 }
 
-
-async def _human_delay():
-    await asyncio.sleep(random.uniform(0.6, 1.4))
+DEFAULT_CONFIG = {"apply_btn": None, "next_btn": None, "submit_btn": "button[type='submit'], input[type='submit']"}
 
 
-async def _fill(page: Page, selector: str | None, value: str):
-    if not selector or not value:
-        return
-    el = page.locator(selector).first
-    if await el.count():
-        await el.fill(value)
-        await _human_delay()
+async def _button_text(page: Page, selector: str) -> str | None:
+    btn = page.locator(selector).first
+    if not await btn.count() or not await btn.is_visible():
+        return None
+    return (await btn.evaluate("el => el.innerText || el.value || el.getAttribute('aria-label') || ''")).strip()
 
 
 class ATSBot:
     def __init__(self, ats_type: str):
         self._ats_type = ats_type
-        self._config = ATS_APPLY_CONFIGS.get(ats_type, {})
+        self._config = ATS_APPLY_CONFIGS.get(ats_type, DEFAULT_CONFIG)
         self._playwright = None
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
+        self._resume: ResumeFile | None = None
         self._meta: dict = {}
 
     async def _launch(self):
         self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(headless=False)
+        self._browser = await self._playwright.chromium.launch(headless=headless())
         session_file = SESSION_DIR / f"{self._ats_type.replace('.', '_')}.json"
         storage = json.loads(session_file.read_text()) if session_file.exists() else None
         self._context = await self._browser.new_context(storage_state=storage)
@@ -96,71 +73,64 @@ class ATSBot:
     async def fill_form(
         self,
         job_url: str,
-        resume_pdf_base64: str,
+        resume_pdf: bytes,
         profile: dict,
         screening_answers: list[dict],
+        cover_letter: str = "",
     ) -> dict:
+        self._resume = ResumeFile(resume_pdf, profile.get("name", ""))
         await self._launch()
-        self._meta = {"url": job_url, "company": "", "role": "", "cover_letter": False}
+        self._meta = {"url": job_url, "cover_letter": False}
         cfg = self._config
+        page = self._page
 
-        await self._page.goto(job_url, wait_until="domcontentloaded")
-        await _human_delay()
+        await page.goto(job_url, wait_until="domcontentloaded")
 
         if cfg.get("apply_btn"):
-            btn = self._page.locator(cfg["apply_btn"]).first
+            btn = page.locator(cfg["apply_btn"]).first
             if await btn.count():
                 await btn.click()
-                await _human_delay()
+                await page.wait_for_load_state("domcontentloaded")
 
-        # Split name into first/last
-        name_parts = profile.get("name", "").split(" ", 1)
-        first = name_parts[0]
-        last = name_parts[1] if len(name_parts) > 1 else ""
+        report = FillReport()
+        for _ in range(8):
+            step_needs = await fill_page(page, profile, screening_answers, cover_letter, self._resume, report)
+            next_sel = cfg.get("next_btn")
+            if not next_sel or step_needs:
+                break  # single-page form, or the candidate has to act before this step can advance
+            label = await _button_text(page, next_sel)
+            if label is None or FINAL_BUTTON.search(label):
+                break  # the next click would submit; that belongs to /confirm
+            await page.locator(next_sel).first.click()
+            await page.wait_for_load_state("domcontentloaded")
 
-        await _fill(self._page, cfg.get("first_name"), first)
-        await _fill(self._page, cfg.get("last_name"), last)
-        await _fill(self._page, cfg.get("email"), profile.get("email", ""))
-        await _fill(self._page, cfg.get("phone"), profile.get("phone", ""))
-
-        # Upload resume
-        tmp = Path("sessions/resume_upload.pdf")
-        tmp.write_bytes(base64.b64decode(resume_pdf_base64))
-        upload = self._page.locator(cfg.get("resume_upload", "input[type='file']")).first
-        if await upload.count():
-            await upload.set_input_files(str(tmp))
-            await _human_delay()
-
-        # Click through any next buttons
-        if cfg.get("next_btn"):
-            for _ in range(5):
-                next_btn = self._page.locator(cfg["next_btn"]).first
-                if await next_btn.count() and await next_btn.is_visible():
-                    await next_btn.click()
-                    await _human_delay()
-                else:
-                    break
-
-        screenshot_bytes = await self._page.screenshot(full_page=False)
-        screenshot_b64 = base64.b64encode(screenshot_bytes).decode()
-
-        return {
-            "screenshot_base64": screenshot_b64,
-            "fields_filled": ["name", "email", "phone", "resume"],
-        }
+        self._meta["cover_letter"] = any("cover letter" in f.lower() for f in report.filled)
+        screenshot = await page.screenshot(full_page=False)
+        return {"screenshot": screenshot, "fields_filled": report.filled, "needs_input": report.needs_input}
 
     async def submit(self) -> dict:
-        cfg = self._config
-        submit_sel = cfg.get("submit_btn", "button[type='submit']")
+        submit_sel = self._config.get("submit_btn") or DEFAULT_CONFIG["submit_btn"]
         btn = self._page.locator(submit_sel).last
         if not await btn.count():
-            raise RuntimeError(f"Submit button not found for ATS: {self._ats_type}")
-        await btn.click()
-        await _human_delay()
+            return {"status": "failed", "detail": f"Submit button not found for ATS: {self._ats_type}"}
+        if self._config.get("next_btn") == submit_sel:
+            label = await _button_text(self._page, submit_sel) or ""
+            if not FINAL_BUTTON.search(label):
+                # Shared Next/Submit button still reads "Next": clicking it would
+                # only change step, and the result would read as unconfirmed.
+                return {"status": "failed", "detail": "the form has more steps; finish them in the browser window"}
+        return await click_submit(self._page, btn)
+
+    @property
+    def meta(self) -> dict:
         return self._meta
 
     async def close(self):
-        if self._browser:
-            await self._browser.close()
-        if self._playwright:
-            await self._playwright.stop()
+        try:
+            if self._browser:
+                await self._browser.close()
+            if self._playwright:
+                await self._playwright.stop()
+        finally:
+            if self._resume:
+                self._resume.remove()

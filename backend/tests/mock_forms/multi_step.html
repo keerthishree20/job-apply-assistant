@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Mock multi-step form</title></head>
+<body>
+<!-- Mimics Workday: one button, same selector, reads "Next" and then "Submit". -->
+<div id="step1">
+  <label for="fn">First Name</label><input id="fn">
+  <label for="em">Email Address</label><input id="em" type="email">
+</div>
+<div id="step2" hidden>
+  <label for="cv">Upload resume</label><input id="cv" type="file">
+</div>
+<button data-automation-id="bottom-navigation-next-btn" id="nav">Next</button>
+<script>
+  window.__submitted = false;
+  let step = 1;
+  document.getElementById('nav').addEventListener('click', () => {
+    if (step === 1) {
+      step = 2;
+      document.getElementById('step1').hidden = true;
+      document.getElementById('step2').hidden = false;
+      document.getElementById('nav').textContent = 'Submit';
+    } else {
+      window.__submitted = true;
+      document.body.innerHTML = '<h2>Your application has been submitted</h2>';
+    }
+  });
+</script>
+</body>
+</html>

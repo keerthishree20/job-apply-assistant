@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Backend Engineer, Acme (mock application form)</title>
+<style>
+  body { font-family: sans-serif; max-width: 640px; margin: 24px auto; }
+  label, legend { display: block; margin-top: 12px; }
+  input, textarea, select { width: 100%; }
+  input[type=checkbox] { width: auto; }
+  [aria-invalid=true] { outline: 2px solid red; }
+</style>
+</head>
+<body>
+<!-- A local stand-in for a Greenhouse-style form. Nothing here talks to a real employer. -->
+<h1>Backend Engineer</h1>
+<p>Fields marked * are required.</p>
+<form id="app">
+  <label for="first_name">First Name *</label>
+  <input id="first_name" name="first_name" required>
+
+  <label for="last_name">Last Name *</label>
+  <input id="last_name" name="last_name" required>
+
+  <label for="email">Email *</label>
+  <input id="email" name="email" type="email" required>
+
+  <label for="phone">Phone</label>
+  <input id="phone" name="phone" type="tel">
+
+  <label for="linkedin">LinkedIn Profile</label>
+  <input id="linkedin" name="linkedin">
+
+  <label for="city">City *</label>
+  <input id="city" name="city" required>
+
+  <label for="resume">Resume/CV *</label>
+  <input id="resume" name="resume" type="file" required>
+
+  <label for="cover">Cover Letter</label>
+  <textarea id="cover" name="cover"></textarea>
+
+  <label for="why">Why do you want to work at Acme? *</label>
+  <textarea id="why" name="why" required></textarea>
+
+  <label for="years">Years of experience *</label>
+  <input id="years" name="years" type="number" required>
+
+  <label for="salary">What are your salary expectations?</label>
+  <input id="salary" name="salary">
+
+  <label for="auth">Are you legally authorized to work in India? *</label>
+  <select id="auth" name="auth" required>
+    <option value="">Select...</option>
+    <option>Yes</option>
+    <option>No</option>
+  </select>
+
+  <fieldset>
+    <legend>Do you require visa sponsorship? *</legend>
+    <label><input type="radio" name="sponsor" value="yes" required> Yes</label>
+    <label><input type="radio" name="sponsor" value="no"> No</label>
+  </fieldset>
+
+  <label><input id="consent" name="consent" type="checkbox" required> I agree to the privacy policy *</label>
+
+  <div id="errors" role="alert" hidden></div>
+  <button type="submit">Submit application</button>
+</form>
+
+<script>
+  window.__submissions = 0;
+  // ?novalidate switches off the browser's own required-field check, so the
+  // page's script reports the errors instead, like most ATS front ends.
+  if (location.search.includes('novalidate')) document.getElementById('app').noValidate = true;
+  document.getElementById('app').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const problems = [];
+    for (const el of form.querySelectorAll('[required]')) {
+      el.removeAttribute('aria-invalid');
+      const blank = el.type === 'checkbox' ? !el.checked
+        : el.type === 'radio' ? !form.querySelector(`input[name="${el.name}"]:checked`)
+        : el.type === 'file' ? !el.files.length
+        : !el.value.trim();
+      if (blank) { el.setAttribute('aria-invalid', 'true'); problems.push(el.name); }
+    }
+    const file = form.resume.files[0];
+    if (file) {
+      const head = new TextDecoder().decode(await file.slice(0, 4).arrayBuffer());
+      if (head !== '%PDF') problems.push('resume is not a PDF');
+    }
+    const box = document.getElementById('errors');
+    if (problems.length) {
+      box.hidden = false;
+      box.textContent = 'Please complete: ' + problems.join(', ');
+      return;
+    }
+    window.__submissions += 1;
+    window.__submitted = Object.fromEntries(
+      [...new FormData(form)].map(([k, v]) => [k, typeof v === 'string' ? v : v.name]));
+    document.body.innerHTML = '<h2>Thank you for applying to Acme!</h2>';
+  });
+</script>
+</body>
+</html>

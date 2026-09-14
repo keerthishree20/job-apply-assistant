@@ -1,31 +1,30 @@
+"""LinkedIn Easy Apply.
+
+Not verified against the live site: it needs a logged-in account, and automating
+LinkedIn is against its terms. The form handling it shares with ATSBot is tested
+against local mock forms; the LinkedIn-specific selectors below are not.
+"""
+
 import asyncio
-import base64
 import json
 import random
 from pathlib import Path
-from playwright.async_api import async_playwright, Page, Browser, BrowserContext, TimeoutError as PWTimeout
+
+from playwright.async_api import async_playwright, Page, Browser, BrowserContext
+
+from services.form_filler import FillReport, ResumeFile, click_submit, fill_page, headless
 
 SESSION_PATH = Path("sessions/linkedin.json")
 SESSION_PATH.parent.mkdir(exist_ok=True)
-RESUME_TMP   = Path("sessions/resume_upload.pdf")
+
+MODAL = "div.jobs-easy-apply-modal, div[role='dialog']"
+NEXT_BTN = "button[aria-label='Continue to next step']"
+REVIEW_BTN = "button[aria-label='Review your application']"
+SUBMIT_BTN = "button[aria-label='Submit application']"
 
 
 async def _delay(lo=0.8, hi=1.8):
     await asyncio.sleep(random.uniform(lo, hi))
-
-
-async def _safe_fill(page: Page, selector: str, value: str, timeout=3000) -> bool:
-    """Fill a field if it exists and is visible. Returns True if filled."""
-    try:
-        el = page.locator(selector).first
-        await el.wait_for(state="visible", timeout=timeout)
-        await el.click()
-        await el.fill("")
-        await el.type(value, delay=35)
-        await _delay(0.3, 0.6)
-        return True
-    except Exception:
-        return False
 
 
 async def _safe_click(page: Page, selector: str, timeout=4000) -> bool:
@@ -45,12 +44,13 @@ class LinkedInBot:
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
+        self._resume: ResumeFile | None = None
         self._meta: dict = {}
 
     async def _launch(self):
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(
-            headless=False,
+            headless=headless(),
             args=["--start-maximized"],
         )
         storage = json.loads(SESSION_PATH.read_text()) if SESSION_PATH.exists() else None
@@ -63,231 +63,75 @@ class LinkedInBot:
     async def _ensure_logged_in(self):
         await self._page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=20000)
         await _delay(1, 2)
-        if "login" in self._page.url or "authwall" in self._page.url or "checkpoint" in self._page.url:
+        if any(k in self._page.url for k in ("login", "authwall", "checkpoint")):
+            if headless():
+                raise RuntimeError(
+                    "LinkedIn needs a saved login. Run once with APPLY_HEADLESS=false and sign in "
+                    "in the browser window that opens."
+                )
             await self._page.goto("https://www.linkedin.com/login")
-            print("[Bot] Waiting for manual LinkedIn login (60s)...")
+            print("[Bot] Waiting for manual LinkedIn login (90s)...")
             await self._page.wait_for_url("**/feed/**", timeout=90_000)
         await self._context.storage_state(path=str(SESSION_PATH))
-
-    async def _upload_resume(self, pdf_base64: str) -> bool:
-        RESUME_TMP.write_bytes(base64.b64decode(pdf_base64))
-        try:
-            # LinkedIn resume upload is inside the modal
-            upload_btn = self._page.locator("button:has-text('Upload resume'), label:has-text('Upload resume')").first
-            if await upload_btn.count():
-                await upload_btn.click()
-                await _delay(0.5, 1)
-
-            file_input = self._page.locator("input[type='file']").first
-            await file_input.wait_for(state="attached", timeout=3000)
-            await file_input.set_input_files(str(RESUME_TMP))
-            await _delay(1.5, 2.5)
-            return True
-        except Exception:
-            return False
-
-    async def _handle_page_fields(self, profile: dict, fields_filled: list[str]):
-        page = self._page
-
-        # Phone number — multiple possible selectors
-        phone_selectors = [
-            "input[id*='phoneNumber']",
-            "input[aria-label*='Phone']",
-            "input[aria-label*='phone']",
-            "input[name*='phone']",
-        ]
-        for sel in phone_selectors:
-            if profile.get("phone"):
-                filled = await _safe_fill(page, sel, profile["phone"])
-                if filled and "phone" not in fields_filled:
-                    fields_filled.append("phone")
-                    break
-
-        # City / Location
-        city_selectors = [
-            "input[id*='city']",
-            "input[aria-label*='City']",
-            "input[aria-label*='location']",
-        ]
-        for sel in city_selectors:
-            if profile.get("college"):
-                filled = await _safe_fill(page, sel, "Coimbatore")
-                if filled and "city" not in fields_filled:
-                    fields_filled.append("city")
-                    break
-
-        # Text inputs / dropdowns — look for visible unfilled inputs on page
-        inputs = await page.locator("input[type='text']:visible, input[type='number']:visible").all()
-        for inp in inputs:
-            try:
-                label_text = await inp.evaluate(
-                    "el => (el.labels?.[0]?.textContent || el.getAttribute('aria-label') || el.placeholder || '').toLowerCase()"
-                )
-                current_val = await inp.input_value()
-                if current_val:
-                    continue  # already filled
-
-                # Match common field names
-                if any(k in label_text for k in ["years of experience", "experience", "year"]):
-                    await inp.fill("1")
-                    fields_filled.append("experience") if "experience" not in fields_filled else None
-                elif any(k in label_text for k in ["salary", "ctc", "expected"]):
-                    await inp.fill("As per company standards")
-                elif any(k in label_text for k in ["notice", "availability", "joining"]):
-                    await inp.fill("Immediately available")
-                elif any(k in label_text for k in ["linkedin", "profile url"]):
-                    await inp.fill(profile.get("linkedin_url", ""))
-                elif any(k in label_text for k in ["github", "portfolio", "website"]):
-                    await inp.fill(profile.get("github_url", ""))
-                await _delay(0.2, 0.4)
-            except Exception:
-                continue
-
-        # Textareas (cover letter / additional info)
-        textareas = await page.locator("textarea:visible").all()
-        for ta in textareas:
-            try:
-                current_val = await ta.input_value()
-                if current_val:
-                    continue
-                label_text = await ta.evaluate(
-                    "el => (el.labels?.[0]?.textContent || el.getAttribute('aria-label') || '').toLowerCase()"
-                )
-                if any(k in label_text for k in ["cover", "additional", "message", "note"]):
-                    await ta.fill(f"I am applying for this position and believe my skills in Python, FastAPI, and Next.js make me a strong candidate. I am immediately available.")
-                    fields_filled.append("cover_letter") if "cover_letter" not in fields_filled else None
-                await _delay(0.2, 0.4)
-            except Exception:
-                continue
-
-        # Radio buttons — pick first option if unanswered
-        radios = await page.locator("fieldset:visible").all()
-        for fieldset in radios:
-            try:
-                first_radio = fieldset.locator("input[type='radio']").first
-                if await first_radio.count():
-                    is_checked = await first_radio.is_checked()
-                    if not is_checked:
-                        await first_radio.check()
-                        await _delay(0.2, 0.4)
-            except Exception:
-                continue
-
-        # Dropdowns — pick first non-empty option
-        selects = await page.locator("select:visible").all()
-        for sel in selects:
-            try:
-                current = await sel.input_value()
-                if not current or current == "Select an option":
-                    options = await sel.locator("option").all()
-                    for opt in options[1:]:  # skip first blank option
-                        val = await opt.get_attribute("value")
-                        if val:
-                            await sel.select_option(value=val)
-                            break
-                    await _delay(0.2, 0.4)
-            except Exception:
-                continue
 
     async def fill_form(
         self,
         job_url: str,
-        resume_pdf_base64: str,
+        resume_pdf: bytes,
         profile: dict,
         screening_answers: list[dict],
+        cover_letter: str = "",
     ) -> dict:
+        self._resume = ResumeFile(resume_pdf, profile.get("name", ""))
         await self._launch()
         await self._ensure_logged_in()
-        self._meta = {"url": job_url, "cover_letter": False, "role": "", "company": ""}
+        self._meta = {"url": job_url, "cover_letter": False}
+        page = self._page
 
-        await self._page.goto(job_url, wait_until="domcontentloaded", timeout=20000)
+        await page.goto(job_url, wait_until="domcontentloaded", timeout=20000)
         await _delay(2, 3)
 
-        # Extract job meta
-        try:
-            self._meta["role"] = (await self._page.locator("h1.top-card-layout__title, h1.job-details-jobs-unified-top-card__job-title").first.text_content(timeout=3000) or "").strip()
-        except Exception:
-            pass
-        try:
-            self._meta["company"] = (await self._page.locator("a.topcard__org-name-link, a.job-details-jobs-unified-top-card__company-name").first.text_content(timeout=3000) or "").strip()
-        except Exception:
-            pass
-
-        # Click Easy Apply button
-        easy_apply_selectors = [
-            "button.jobs-apply-button",
-            "button[data-control-name='jobdetails_topcard_inapply']",
-            "button:has-text('Easy Apply')",
-        ]
-        clicked = False
-        for sel in easy_apply_selectors:
-            if await _safe_click(self._page, sel, timeout=5000):
-                clicked = True
-                break
-        if not clicked:
-            raise RuntimeError("Easy Apply button not found. This job may require applying on the company website.")
-
-        await _delay(2, 3)
-
-        fields_filled: list[str] = []
-        resume_uploaded = False
-
-        # Multi-page form loop
-        for page_num in range(10):
-            await _delay(1.5, 2.5)
-
-            # Upload resume on first page or resume page
-            if not resume_uploaded:
-                uploaded = await self._upload_resume(resume_pdf_base64)
-                if uploaded:
-                    resume_uploaded = True
-                    fields_filled.append("resume")
-
-            # Fill all visible fields on this page
-            await self._handle_page_fields(profile, fields_filled)
-
-            # Check which button is available
-            review_visible = await self._page.locator("button[aria-label='Review your application']").count()
-            next_visible   = await self._page.locator("button[aria-label='Continue to next step']").count()
-            submit_visible = await self._page.locator("button[aria-label='Submit application']").count()
-
-            if submit_visible:
-                # Already on review page
-                break
-            elif review_visible:
-                await _safe_click(self._page, "button[aria-label='Review your application']")
-                await _delay(1.5, 2)
-                break
-            elif next_visible:
-                await _safe_click(self._page, "button[aria-label='Continue to next step']")
-            else:
-                # Try generic Next/Continue button
-                generic = await self._page.locator("button[type='submit']:visible, footer button:visible").last.count()
-                if generic:
-                    await self._page.locator("button[type='submit']:visible, footer button:visible").last.click()
-                    await _delay(1, 1.5)
-                else:
-                    break
-
-        screenshot_bytes = await self._page.screenshot(full_page=False)
-        return {
-            "screenshot_base64": base64.b64encode(screenshot_bytes).decode(),
-            "fields_filled": fields_filled or ["phone", "resume"],
-        }
-
-    async def submit(self) -> dict:
-        selectors = [
-            "button[aria-label='Submit application']",
-            "button:has-text('Submit application')",
-            "button:has-text('Submit')",
-        ]
-        for sel in selectors:
-            if await _safe_click(self._page, sel, timeout=5000):
+        for sel in ("button.jobs-apply-button", "button:has-text('Easy Apply')"):
+            if await _safe_click(page, sel, timeout=5000):
                 break
         else:
-            raise RuntimeError("Submit button not found on the page.")
+            raise RuntimeError("Easy Apply button not found. This job may require applying on the company website.")
         await _delay(2, 3)
-        self._meta["resume_snippet"] = ""
+
+        report = FillReport()
+        for _ in range(10):
+            await _delay(1.0, 1.8)
+            # LinkedIn hides its file input behind an "Upload resume" button.
+            upload = page.locator("button:has-text('Upload resume'), label:has-text('Upload resume')").first
+            if "Resume (PDF)" not in report.filled and await upload.count():
+                await page.locator("input[type='file']").first.set_input_files(str(self._resume.path))
+                report.add_filled("Resume (PDF)")
+
+            step_needs = await fill_page(page, profile, screening_answers, cover_letter, self._resume, report, MODAL)
+
+            if await page.locator(SUBMIT_BTN).count() or step_needs:
+                break  # at the review step, or the candidate must answer something first
+            if await page.locator(REVIEW_BTN).count():
+                await _safe_click(page, REVIEW_BTN)
+                await _delay(1.5, 2)
+                break
+            if not await _safe_click(page, NEXT_BTN):
+                # No known navigation button. Stop here rather than clicking whatever
+                # button is last in the footer, which may be the submit.
+                break
+
+        self._meta["cover_letter"] = any("cover letter" in f.lower() for f in report.filled)
+        screenshot = await page.screenshot(full_page=False)
+        return {"screenshot": screenshot, "fields_filled": report.filled, "needs_input": report.needs_input}
+
+    async def submit(self) -> dict:
+        btn = self._page.locator(SUBMIT_BTN).first
+        if not await btn.count() or not await btn.is_visible():
+            return {"status": "failed", "detail": "Submit button not found. Finish the remaining steps in the browser window."}
+        return await click_submit(self._page, btn)
+
+    @property
+    def meta(self) -> dict:
         return self._meta
 
     async def close(self):
@@ -296,7 +140,11 @@ class LinkedInBot:
                 await self._context.storage_state(path=str(SESSION_PATH))
         except Exception:
             pass
-        if self._browser:
-            await self._browser.close()
-        if self._playwright:
-            await self._playwright.stop()
+        try:
+            if self._browser:
+                await self._browser.close()
+            if self._playwright:
+                await self._playwright.stop()
+        finally:
+            if self._resume:
+                self._resume.remove()
