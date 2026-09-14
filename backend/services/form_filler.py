@@ -361,14 +361,18 @@ _SUCCESS_URL = re.compile(r"thank|confirm|success|submitted", re.I)
 _ERRORS_JS = """
 () => {
   const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const clean = (s) => (s || '').replace(/[*\\s]+/g, ' ').trim();
+  const nameOf = (el) => {
+    const fs = el.type === 'radio' && el.closest('fieldset');
+    if (fs && fs.querySelector('legend')) return clean(fs.querySelector('legend').textContent);
+    return clean(el.labels && el.labels[0] ? el.labels[0].textContent : '') || el.name || el.id;
+  };
   const texts = [];
   for (const el of document.querySelectorAll(
       "[role=alert], .error, .errors, .field-error, .invalid-feedback, [aria-invalid=true]")) {
     if (!vis(el)) continue;
-    const t = el.getAttribute('aria-invalid') === 'true'
-      ? 'invalid: ' + (el.labels && el.labels[0] ? el.labels[0].textContent.trim() : el.name)
-      : el.textContent.replace(/\\s+/g, ' ').trim();
-    if (t) texts.push(t);
+    const t = el.getAttribute('aria-invalid') === 'true' ? 'needs an answer: ' + nameOf(el) : clean(el.textContent);
+    if (t && !texts.includes(t)) texts.push(t);
   }
   return texts;
 }
@@ -379,8 +383,12 @@ _NATIVE_INVALID_JS = """
 (btn) => {
   const form = btn.form || btn.closest('form');
   if (!form || form.noValidate || btn.formNoValidate) return [];
-  const name = (el) => (el.labels && el.labels[0] ? el.labels[0].textContent : '')
-    .replace(/[*\\s]+/g, ' ').trim() || el.name || el.id;
+  const name = (el) => {
+    const fs = el.type === 'radio' && el.closest('fieldset');
+    const text = fs && fs.querySelector('legend') ? fs.querySelector('legend').textContent
+      : (el.labels && el.labels[0] ? el.labels[0].textContent : '');
+    return text.replace(/[*\\s]+/g, ' ').trim() || el.name || el.id;
+  };
   return [...form.elements].filter((el) => el.willValidate && !el.checkValidity()).map(name)
     .filter((v, i, a) => a.indexOf(v) === i);
 }

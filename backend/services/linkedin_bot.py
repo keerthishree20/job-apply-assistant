@@ -121,7 +121,7 @@ class LinkedInBot:
                 break
 
         self._meta["cover_letter"] = any("cover letter" in f.lower() for f in report.filled)
-        screenshot = await page.screenshot(full_page=False)
+        screenshot = await page.screenshot(full_page=True)
         return {"screenshot": screenshot, "fields_filled": report.filled, "needs_input": report.needs_input}
 
     async def submit(self) -> dict:

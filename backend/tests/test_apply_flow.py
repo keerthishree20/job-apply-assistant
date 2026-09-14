@@ -229,6 +229,8 @@ def test_confirm_with_required_questions_unanswered_fails_and_logs_nothing(api, 
     assert res["session_open"] is True
     message = res["message"].lower()
     assert "city" in message and ("consent" in message or "privacy" in message)
+    if not query:  # the browser path names radio groups by their question, not "Yes"
+        assert "visa sponsorship" in message and "yes," not in message
     assert api.logged == []
     assert prev["session_id"] in api.sessions  # kept open to fix and retry
     assert _on_page(api, prev["session_id"], _submissions) == 0
