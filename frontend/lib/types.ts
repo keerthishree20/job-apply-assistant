@@ -24,6 +24,24 @@ export interface QAItem {
   needs_review?: boolean;
 }
 
+export interface ApplyPreview {
+  status: string;
+  screenshot_base64: string;
+  fields_filled: string[];
+  /** Left blank on purpose — legal/personal-status questions, required fields
+   *  with no data. The candidate answers these in the bot's browser window. */
+  needs_input: string[];
+  session_id: string;
+}
+
+export interface ApplyConfirmResult {
+  /** submitted: the site confirmed it. failed: the form showed errors, session
+   *  still open. unconfirmed: no confirmation seen, not logged. */
+  status: "submitted" | "failed" | "unconfirmed";
+  message: string;
+  session_open: boolean;
+}
+
 export interface GenerateResult {
   tailored_resume: string;
   cover_letter: string;

@@ -6,7 +6,7 @@ import ResultTabs from "@/components/ResultTabs";
 import DownloadPanel from "@/components/DownloadPanel";
 import ApplyConfirmModal from "@/components/ApplyConfirmModal";
 import { getProfile, addApplication } from "@/lib/localStorage";
-import { parseResume, scrapeJob, generateContent, answerQuestions, applyPreview, applyConfirm } from "@/lib/api";
+import { parseResume, scrapeJob, generateContent, answerQuestions, applyPreview, applyConfirm, applyCancel } from "@/lib/api";
 import type { GenerateResult, QAItem } from "@/lib/types";
 
 type Step = 0 | 1 | 2 | 3;
@@ -32,9 +32,10 @@ export default function ApplyPage() {
   const [qaItems, setQaItems]         = useState<QAItem[]>([]);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState("");
-  const [preview, setPreview]         = useState<{ screenshot: string; fields: string[]; session: string } | null>(null);
+  const [preview, setPreview]         = useState<{ screenshot: string; fields: string[]; needsInput: string[]; session: string } | null>(null);
   const [confirming, setConfirming]   = useState(false);
-  const [success, setSuccess]         = useState(false);
+  const [confirmError, setConfirmError] = useState("");
+  const [outcome, setOutcome]         = useState<{ status: "submitted" | "unconfirmed"; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePdfUpload = async (file: File) => {
@@ -103,17 +104,26 @@ export default function ApplyPage() {
 
   const handleEasyApply = async () => {
     if (!result) return;
+    if (!jobUrl.trim()) { setError("Easy Apply needs the job URL — a pasted description has no form to fill."); return; }
     const profile = getProfile();
     if (!profile) { setError("Please fill your profile first (Profile tab)."); return; }
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setOutcome(null);
     try {
       const prev = await applyPreview({
         job_url: jobUrl,
-        resume_pdf_base64: btoa(String.fromCharCode(...new TextEncoder().encode(result.tailored_resume))),
+        resume_text: result.tailored_resume,
+        cover_letter: result.cover_letter,
         profile,
         screening_answers: qaItems,
-      }) as { screenshot_base64: string; fields_filled: string[]; session_id: string };
-      setPreview({ screenshot: prev.screenshot_base64, fields: prev.fields_filled, session: prev.session_id });
+        company: jobMeta.company,
+        role: jobMeta.title,
+      });
+      setPreview({
+        screenshot: prev.screenshot_base64,
+        fields: prev.fields_filled,
+        needsInput: prev.needs_input ?? [],
+        session: prev.session_id,
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Bot failed to open form.");
     } finally {
@@ -123,20 +133,36 @@ export default function ApplyPage() {
 
   const handleConfirm = async () => {
     if (!preview) return;
-    setConfirming(true);
+    setConfirming(true); setConfirmError("");
     try {
-      await applyConfirm(preview.session);
-      addApplication({ company: jobMeta.company, role: jobMeta.title, url: jobUrl });
-      setPreview(null); setSuccess(true); setStep(3);
+      const res = await applyConfirm(preview.session);
+      if (res.status === "failed") {
+        // Nothing was accepted and the browser is still open: stay in the modal to fix and retry.
+        setConfirmError(res.message);
+        return;
+      }
+      if (res.status === "submitted") {
+        // Logged only when the site itself confirmed the application.
+        addApplication({ company: jobMeta.company, role: jobMeta.title, url: jobUrl });
+      }
+      setOutcome({ status: res.status, message: res.message });
+      setPreview(null); setStep(3);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Submit failed.");
+      setConfirmError(e instanceof Error ? e.message : "Submit failed.");
     } finally {
       setConfirming(false);
     }
   };
 
+  const handleCancel = () => {
+    if (preview) applyCancel(preview.session).catch(() => {});  // closes the bot's browser
+    setPreview(null); setConfirmError("");
+  };
+
+  const success = outcome !== null;
+
   const resetAll = () => {
-    setSuccess(false); setStep(0); setResult(null);
+    setOutcome(null); setStep(0); setResult(null);
     setJobUrl(""); setManualJD(""); setJobMeta({ title: "", company: "", jd: "" });
     setPdfFile(null); setOriginal(""); setParsed("");
   };
@@ -159,11 +185,21 @@ export default function ApplyPage() {
       )}
 
       {/* SUCCESS */}
-      {success && (
+      {outcome && (
         <div className="card p-8 text-center fade-up">
-          <div className="text-5xl mb-4">🎉</div>
-          <h2 className="text-xl font-bold text-white mb-2">Application Submitted!</h2>
-          <p className="text-slate-400 text-sm mb-4">Logged to your tracker automatically.</p>
+          {outcome.status === "submitted" ? (
+            <>
+              <div className="text-5xl mb-4">🎉</div>
+              <h2 className="text-xl font-bold text-white mb-2">Application Submitted</h2>
+              <p className="text-slate-400 text-sm mb-4">The site confirmed it, and it is logged to your tracker.</p>
+            </>
+          ) : (
+            <>
+              <AlertTriangle size={40} className="mx-auto mb-4 text-amber-400" />
+              <h2 className="text-xl font-bold text-white mb-2">Submission Not Confirmed</h2>
+              <p className="text-slate-400 text-sm mb-4">{outcome.message}</p>
+            </>
+          )}
           <button onClick={resetAll} className="btn-glow px-6 py-2.5 rounded-xl text-white text-sm font-semibold">
             Apply to Another Job
           </button>
@@ -300,8 +336,10 @@ export default function ApplyPage() {
         <ApplyConfirmModal
           screenshotB64={preview.screenshot}
           fieldsFilled={preview.fields}
+          needsInput={preview.needsInput}
+          errorMessage={confirmError}
           onConfirm={handleConfirm}
-          onCancel={() => setPreview(null)}
+          onCancel={handleCancel}
           loading={confirming}
         />
       )}

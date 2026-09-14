@@ -1,4 +1,6 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import type { ApplyPreview, ApplyConfirmResult } from "./types";
+
+const BASE =process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -44,13 +46,19 @@ export const answerQuestions = (body: {
 
 export const applyPreview = (body: {
   job_url: string;
-  resume_pdf_base64: string;
+  resume_text: string;          // rendered to a real PDF by the backend
+  cover_letter: string;
   profile: object;
   screening_answers: object[];
-}) => post("/api/apply", body);
+  company: string;
+  role: string;
+}) => post<ApplyPreview>("/api/apply", body);
 
 export const applyConfirm = (session_id: string) =>
-  post("/api/apply/confirm", { session_id });
+  post<ApplyConfirmResult>("/api/apply/confirm", { session_id });
+
+export const applyCancel = (session_id: string) =>
+  post("/api/apply/cancel", { session_id });
 
 export const exportTracker = () =>
   fetch(`${BASE}/api/tracker/export`).then((r) => r.blob());
