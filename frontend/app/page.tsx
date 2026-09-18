@@ -26,6 +26,10 @@ export default function ApplyPage() {
   const [parsing, setParsing]         = useState(false);
   const [jobUrl, setJobUrl]           = useState("");
   const [manualJD, setManualJD]       = useState("");
+  // A pasted description has no scraper to read these from, so the candidate
+  // types them. Without them the tracker logged the application with blanks.
+  const [manualTitle, setManualTitle]     = useState("");
+  const [manualCompany, setManualCompany] = useState("");
   const [showManual, setShowManual]   = useState(false);
   const [jobMeta, setJobMeta]         = useState({ title: "", company: "", jd: "" });
   const [result, setResult]           = useState<GenerateResult | null>(null);
@@ -69,8 +73,8 @@ export default function ApplyPage() {
 
     try {
       let jd = manualJD;
-      let title = "";
-      let company = "";
+      let title = manualTitle.trim();
+      let company = manualCompany.trim();
 
       if (jobUrl && !showManual) {
         const scraped = await scrapeJob(jobUrl) as { job_title?: string; company?: string; job_description?: string; error?: string; message?: string };
@@ -163,7 +167,8 @@ export default function ApplyPage() {
 
   const resetAll = () => {
     setOutcome(null); setStep(0); setResult(null);
-    setJobUrl(""); setManualJD(""); setJobMeta({ title: "", company: "", jd: "" });
+    setJobUrl(""); setManualJD(""); setManualTitle(""); setManualCompany("");
+    setJobMeta({ title: "", company: "", jd: "" });
     setPdfFile(null); setOriginal(""); setParsed("");
   };
 
@@ -274,12 +279,28 @@ export default function ApplyPage() {
               {showManual ? "Hide manual input" : "URL not working? Paste JD manually →"}
             </button>
             {showManual && (
-              <textarea
-                className="w-full h-40 p-3 text-sm mt-3 resize-y"
-                placeholder="Paste the full job description here..."
-                value={manualJD}
-                onChange={(e) => setManualJD(e.target.value)}
-              />
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                  <input
+                    className="w-full px-3 py-2.5 text-sm"
+                    placeholder="Job title (for the tracker)"
+                    value={manualTitle}
+                    onChange={(e) => setManualTitle(e.target.value)}
+                  />
+                  <input
+                    className="w-full px-3 py-2.5 text-sm"
+                    placeholder="Company (for the tracker)"
+                    value={manualCompany}
+                    onChange={(e) => setManualCompany(e.target.value)}
+                  />
+                </div>
+                <textarea
+                  className="w-full h-40 p-3 text-sm mt-2 resize-y"
+                  placeholder="Paste the full job description here..."
+                  value={manualJD}
+                  onChange={(e) => setManualJD(e.target.value)}
+                />
+              </>
             )}
           </div>
 
