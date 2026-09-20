@@ -1,5 +1,7 @@
 # Job Apply Assistant
 
+[![tests](https://github.com/keerthishree20/job-apply-assistant/actions/workflows/tests.yml/badge.svg)](https://github.com/keerthishree20/job-apply-assistant/actions/workflows/tests.yml)
+
 Takes one job posting and does the repetitive part of applying: reads the
 description, rewrites your resume against it, drafts a cover letter, answers the
 screening questions, and — if you let it — fills the application form and shows
