@@ -5,6 +5,7 @@ rule and the reason behind it, with the real code. It is self-contained: you can
 chat and ask questions about the project without sharing the repository.
 
 **Repository:** https://github.com/keerthishree20/job-apply-assistant
+**All projects:** https://github.com/keerthishree20
 
 ---
 
