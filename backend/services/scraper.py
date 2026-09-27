@@ -1,3 +1,5 @@
+from urllib.parse import urlparse
+
 import httpx
 from bs4 import BeautifulSoup
 from utils.text_cleaner import clean_text, extract_largest_text_block, remove_boilerplate
@@ -91,6 +93,30 @@ def _select_text(soup: BeautifulSoup, selector: str | None) -> str:
     return clean_text(el.get_text()) if el else ""
 
 
+# Where an ATS puts the employer in the URL. Most ATS pages have no company
+# selector, so without this the tracker logged those applications with a blank
+# company. Only well-known ATS hosts are read; any other URL returns "".
+_ATS_PATH_SLUG = ("jobs.lever.co", "boards.greenhouse.io", "job-boards.greenhouse.io",
+                  "jobs.smartrecruiters.com")
+_ATS_SUBDOMAIN = ("myworkdayjobs.com", "icims.com", "taleo.net")
+
+
+def company_from_url(url: str) -> str:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    slug = ""
+    if host in _ATS_PATH_SLUG:
+        parts = [p for p in parsed.path.split("/") if p]
+        slug = parts[0] if parts else ""
+    elif any(host.endswith("." + d) for d in _ATS_SUBDOMAIN):
+        slug = host.split(".")[0]
+        if slug.startswith("careers-"):  # careers-acme.icims.com
+            slug = slug[len("careers-"):]
+    if slug in ("", "www", "jobs", "careers", "embed"):
+        return ""
+    return slug.replace("-", " ").replace("_", " ").title()
+
+
 async def scrape_job(url: str) -> dict:
     site, config = detect_site(url)
 
@@ -118,6 +144,8 @@ async def scrape_job(url: str) -> dict:
 
     if not description:
         description = extract_largest_text_block(soup)
+    if not company:
+        company = company_from_url(url)
     if not title:
         title_tag = soup.find("title")
         title = title_tag.get_text().split("|")[0].strip() if title_tag else ""

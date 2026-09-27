@@ -248,3 +248,20 @@ def test_tracker_export_returns_a_spreadsheet(client):
     assert response.status_code == 200
     assert "spreadsheet" in response.headers["content-type"]
     assert response.content[:2] == b"PK", "xlsx files are zip archives"
+
+
+@pytest.mark.parametrize("url, expected", [
+    ("https://jobs.lever.co/acme-labs/1234-abcd", "Acme Labs"),
+    ("https://boards.greenhouse.io/stripe/jobs/555", "Stripe"),
+    ("https://job-boards.greenhouse.io/figma/jobs/9", "Figma"),
+    ("https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternal/job/1", "Nvidia"),
+    ("https://careers-acme.icims.com/jobs/12/job", "Acme"),
+    ("https://jobs.smartrecruiters.com/Bosch/7433", "Bosch"),
+    # Hosts it does not know stay blank rather than guessed.
+    ("https://www.example.com/careers/engineer", ""),
+    ("https://jobs.lever.co/", ""),
+])
+def test_company_from_ats_url(url, expected):
+    from services.scraper import company_from_url
+
+    assert company_from_url(url) == expected
