@@ -31,7 +31,7 @@ export default function ApplyPage() {
   const [manualTitle, setManualTitle]     = useState("");
   const [manualCompany, setManualCompany] = useState("");
   const [showManual, setShowManual]   = useState(false);
-  const [jobMeta, setJobMeta]         = useState({ title: "", company: "", jd: "" });
+  const [jobMeta, setJobMeta]         = useState({ title: "", company: "", jd: "", trackerCompany: "" });
   const [result, setResult]           = useState<GenerateResult | null>(null);
   const [qaItems, setQaItems]         = useState<QAItem[]>([]);
   const [loading, setLoading]         = useState(false);
@@ -75,9 +75,10 @@ export default function ApplyPage() {
       let jd = manualJD;
       let title = manualTitle.trim();
       let company = manualCompany.trim();
+      let trackerCompany = company;
 
       if (jobUrl && !showManual) {
-        const scraped = await scrapeJob(jobUrl) as { job_title?: string; company?: string; job_description?: string; error?: string; message?: string };
+        const scraped = await scrapeJob(jobUrl) as { job_title?: string; company?: string; company_hint?: string; job_description?: string; error?: string; message?: string };
         if (scraped.error) {
           setShowManual(true);
           setError(scraped.message ?? "Could not scrape. Please paste JD manually.");
@@ -86,9 +87,11 @@ export default function ApplyPage() {
         jd = scraped.job_description ?? "";
         title = scraped.job_title ?? "";
         company = scraped.company ?? "";
+        // Read from the URL when the page names no company; used for the tracker only.
+        trackerCompany = company || (scraped.company_hint ?? "");
       }
 
-      setJobMeta({ title, company, jd });
+      setJobMeta({ title, company, jd, trackerCompany });
 
       const [gen, qa] = await Promise.all([
         generateContent({ base_resume: parsedResume, job_description: jd, job_title: title, company }) as Promise<GenerateResult>,
@@ -119,7 +122,7 @@ export default function ApplyPage() {
         cover_letter: result.cover_letter,
         profile,
         screening_answers: qaItems,
-        company: jobMeta.company,
+        company: jobMeta.trackerCompany,
         role: jobMeta.title,
       });
       setPreview({
@@ -147,7 +150,7 @@ export default function ApplyPage() {
       }
       if (res.status === "submitted") {
         // Logged only when the site itself confirmed the application.
-        addApplication({ company: jobMeta.company, role: jobMeta.title, url: jobUrl });
+        addApplication({ company: jobMeta.trackerCompany, role: jobMeta.title, url: jobUrl });
       }
       setOutcome({ status: res.status, message: res.message });
       setPreview(null); setStep(3);
@@ -168,7 +171,7 @@ export default function ApplyPage() {
   const resetAll = () => {
     setOutcome(null); setStep(0); setResult(null);
     setJobUrl(""); setManualJD(""); setManualTitle(""); setManualCompany("");
-    setJobMeta({ title: "", company: "", jd: "" });
+    setJobMeta({ title: "", company: "", jd: "", trackerCompany: "" });
     setPdfFile(null); setOriginal(""); setParsed("");
   };
 

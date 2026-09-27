@@ -110,8 +110,10 @@ def company_from_url(url: str) -> str:
         slug = parts[0] if parts else ""
     elif any(host.endswith("." + d) for d in _ATS_SUBDOMAIN):
         slug = host.split(".")[0]
-        if slug.startswith("careers-"):  # careers-acme.icims.com
-            slug = slug[len("careers-"):]
+        for prefix in ("careers-", "uscareers-", "jobs-", "external-"):  # careers-acme.icims.com
+            if slug.startswith(prefix):
+                slug = slug[len(prefix):]
+                break
     if slug in ("", "www", "jobs", "careers", "embed"):
         return ""
     return slug.replace("-", " ").replace("_", " ").title()
@@ -144,8 +146,6 @@ async def scrape_job(url: str) -> dict:
 
     if not description:
         description = extract_largest_text_block(soup)
-    if not company:
-        company = company_from_url(url)
     if not title:
         title_tag = soup.find("title")
         title = title_tag.get_text().split("|")[0].strip() if title_tag else ""
@@ -159,6 +159,9 @@ async def scrape_job(url: str) -> dict:
     return {
         "job_title": title,
         "company": company,
+        # Tracker only. A URL slug ("Jnj", "Openai") is not how the employer
+        # writes its name, so it never goes into the cover letter or answers.
+        "company_hint": company or company_from_url(url),
         "job_description": description,
         "source": site,
     }

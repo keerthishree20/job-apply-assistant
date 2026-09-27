@@ -9,6 +9,7 @@ class ScrapeRequest(BaseModel):
 class ScrapeResponse(BaseModel):
     job_title: str
     company: str
+    company_hint: str = ""
     job_description: str
     source: str
 

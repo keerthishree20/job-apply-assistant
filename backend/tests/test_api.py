@@ -256,6 +256,7 @@ def test_tracker_export_returns_a_spreadsheet(client):
     ("https://job-boards.greenhouse.io/figma/jobs/9", "Figma"),
     ("https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternal/job/1", "Nvidia"),
     ("https://careers-acme.icims.com/jobs/12/job", "Acme"),
+    ("https://jobs-walmart.icims.com/jobs/12/job", "Walmart"),
     ("https://jobs.smartrecruiters.com/Bosch/7433", "Bosch"),
     # Hosts it does not know stay blank rather than guessed.
     ("https://www.example.com/careers/engineer", ""),
@@ -265,3 +266,24 @@ def test_company_from_ats_url(url, expected):
     from services.scraper import company_from_url
 
     assert company_from_url(url) == expected
+
+
+def test_url_company_reaches_tracker_but_not_the_llm(monkeypatch):
+    """The slug is a hint for the tracker; the cover letter must not see it."""
+    import asyncio
+
+    import httpx
+
+    from services import scraper
+
+    html = ("<html><head><title>Engineer | Lever</title></head><body>"
+            "<div class='section-wrapper page-full-width'>" + "Build things. " * 20 +
+            "</div></body></html>")
+
+    async def fake_get(self, url, **kwargs):
+        return httpx.Response(200, text=html, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    result = asyncio.run(scraper.scrape_job("https://jobs.lever.co/openai/abc"))
+    assert result["company"] == ""
+    assert result["company_hint"] == "Openai"
